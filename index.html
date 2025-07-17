@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPLSAA分子动力学模拟工作流程图</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 1.8em;
+            font-weight: 300;
+        }
+        
+        .workflow-container {
+            padding: 20px;
+        }
+        
+        .timeline-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 40px;
+            position: relative;
+            margin-bottom: 30px;
+        }
+        
+        .timeline-column {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+            border: 2px solid #e9ecef;
+            min-height: 800px;
+        }
+        
+        .column-header {
+            text-align: center;
+            font-weight: 600;
+            font-size: 1.1em;
+            margin-bottom: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        
+        .local-env {
+            border-color: #0277bd;
+        }
+        
+        .local-env .column-header {
+            background: #0277bd;
+        }
+        
+        .nas-storage {
+            border-color: #f57c00;
+        }
+        
+        .nas-storage .column-header {
+            background: #f57c00;
+        }
+        
+        .serverless-cluster {
+            border-color: #7b1fa2;
+        }
+        
+        .serverless-cluster .column-header {
+            background: #7b1fa2;
+        }
+        
+        .timeline-step {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-height: 60px;
+        }
+        
+        .timeline-step:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .timeline-step.active {
+            transform: scale(1.02);
+            box-shadow: 0 6px 20px rgba(255,193,7,0.3);
+            border-left-color: #ffc107;
+        }
+        
+        .step-local {
+            border-left-color: #0277bd;
+        }
+        
+        .step-nas {
+            border-left-color: #f57c00;
+        }
+        
+        .step-remote {
+            border-left-color: #7b1fa2;
+        }
+        
+        .step-number {
+            position: absolute;
+            left: -12px;
+            top: 15px;
+            width: 20px;
+            height: 20px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+            font-weight: 600;
+            border: 2px solid white;
+        }
+        
+        .step-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+            font-size: 1em;
+        }
+        
+        .step-desc {
+            font-size: 0.9em;
+            color: #666;
+            line-height: 1.4;
+        }
+        
+        .step-timing {
+            position: absolute;
+            top: 5px;
+            right: 8px;
+            font-size: 0.7em;
+            color: #999;
+            font-weight: 500;
+        }
+        
+        .flow-connection {
+            position: absolute;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .flow-line {
+            stroke: #28a745;
+            stroke-width: 3;
+            fill: none;
+            stroke-dasharray: 8,4;
+            animation: flowDash 2s linear infinite;
+        }
+        
+        .flow-line.reverse {
+            stroke: #dc3545;
+        }
+        
+        .flow-arrow-marker {
+            fill: #28a745;
+        }
+        
+        .flow-arrow-marker.reverse {
+            fill: #dc3545;
+        }
+        
+        .flow-label {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            color: #333;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        @keyframes flowDash {
+            0% {
+                stroke-dashoffset: 0;
+            }
+            100% {
+                stroke-dashoffset: -24;
+            }
+        }
+        
+        .loop-indicator {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ffc107;
+            color: #333;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7em;
+            font-weight: 600;
+            border: 2px solid white;
+        }
+        
+        .progress-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .progress-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .progress-btn:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+        
+        .progress-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-btn.active {
+            background: #ffc107;
+            color: #333;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+        }
+        
+        .progress-arrow {
+            color: #667eea;
+            font-size: 1.2em;
+            font-weight: 600;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+        
+        .progress-info {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 300px;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        @media (max-width: 1200px) {
+            .timeline-layout {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .timeline-column {
+                min-height: auto;
+            }
+            
+            .progress-controls {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧬 OPLSAA分子动力学模拟工作流程图</h1>
+            <p>时序进度式数据流向展示</p>
+            <div style="font-size: 0.9em; margin-top: 10px; opacity: 0.9;">
+                💡 点击进度控制查看不同阶段的数据流向 | 悬停步骤查看详细说明
+            </div>
+        </div>
+        
+        <div class="workflow-container">
+            <!-- 进度控制 -->
+            <div class="progress-controls">
+                <button class="progress-btn" onclick="showProgress(0)" id="btn-0">初始化阶段</button>
+                <span class="progress-arrow">→</span>
+                <button class="progress-btn" onclick="showProgress(1)" id="btn-1">任务生成阶段</button>
+                <span class="progress-arrow">→</span>
+                <button class="progress-btn" onclick="showProgress(2)" id="btn-2">任务提交阶段</button>
+                <span class="progress-arrow">→</span>
+                <button class="progress-btn" onclick="showProgress(3)" id="btn-3">远程执行阶段</button>
+                <span class="progress-arrow">→</span>
+                <button class="progress-btn" onclick="showProgress(4)" id="btn-4">结果回收阶段</button>
+                <span class="progress-arrow">→</span>
+                <button class="progress-btn" onclick="showProgress(5)" id="btn-5">完成阶段</button>
+                <span style="margin: 0 10px;">|</span>
+                <button class="progress-btn" onclick="showProgress(-1)" id="btn-all">显示全部</button>
+            </div>
+            
+            <div class="progress-info" id="progressInfo">
+                点击上方按钮查看不同阶段的数据流向（当前显示全部）
+            </div>
+            
+            <!-- 时序布局 -->
+            <div class="timeline-layout">
+                <!-- SVG for flow connections -->
+                <svg class="flow-connection" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+                    <defs>
+                        <marker id="arrowhead" markerWidth="12" markerHeight="8" refX="11" refY="4" orient="auto">
+                            <polygon points="0 0, 12 4, 0 8" fill="#28a745" />
+                        </marker>
+                    </defs>
+                    
+                    <!-- 动态生成的连接线将在这里 -->
+                    <g id="flowConnections"></g>
+                </svg>
+                
+                <!-- 开发机本地环境 -->
+                <div class="timeline-column local-env">
+                    <div class="column-header">
+                        🏠 开发机本地环境
+                    </div>
+                    
+                    <div class="timeline-step step-local" data-step="0" data-stage="0"
+                         data-tooltip="用户在终端执行命令，设置环境变量NAS_PATH=ai4s-wl并启动submit_oplsaa.py脚本">
+                        <div class="step-number">1</div>
+                        <div class="step-timing">T+0s</div>
+                        <div class="step-title">🚀 执行命令</div>
+                        <div class="step-desc">
+                            NAS_PATH=ai4s-wl python3 -m scripts.submit_oplsaa<br>
+                            启动工作流程
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-local" data-step="1" data-stage="0"
+                         data-tooltip="解析环境变量和命令行参数，初始化BambooWrapper客户端连接生产环境">
+                        <div class="step-number">2</div>
+                        <div class="step-timing">T+0.1s</div>
+                        <div class="step-title">🔧 参数解析</div>
+                        <div class="step-desc">
+                            解析命令行参数<br>
+                            初始化BambooWrapper<br>
+                            连接PROD环境
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-local" data-step="2" data-stage="1"
+                         data-tooltip="读取JSON配置文件，包含模拟体系的化学成分、温度、压力等参数">
+                        <div class="step-number">3</div>
+                        <div class="step-timing">T+0.2s</div>
+                        <div class="step-title">📖 读取配置</div>
+                        <div class="step-desc">
+                            读取test_md_submit.json<br>
+                            解析模拟参数<br>
+                            验证配置有效性
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-local" data-step="3" data-stage="1"
+                         data-tooltip="为每个JSON条目创建5个重复任务，生成独立的配置文件和工作目录">
+                        <div class="step-number">4</div>
+                        <div class="step-timing">T+0.5s</div>
+                        <div class="step-title">⚙️ 生成任务</div>
+                        <div class="step-desc">
+                            遍历JSON条目<br>
+                            每个条目生成5个重复任务<br>
+                            创建独立配置
+                        </div>
+                        <div class="loop-indicator">🔄</div>
+                    </div>
+                    
+                    <div class="timeline-step step-local" data-step="4" data-stage="2"
+                         data-tooltip="将任务打包成PkgTaskBase对象，准备提交到无服务器平台">
+                        <div class="step-number">5</div>
+                        <div class="step-timing">T+2s</div>
+                        <div class="step-title">📦 打包任务</div>
+                        <div class="step-desc">
+                            封装PkgTaskBase对象<br>
+                            包含执行命令和元数据<br>
+                            准备批量提交
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-local" data-step="5" data-stage="2"
+                         data-tooltip="将任务提交到队列381531，创建断点续传文件">
+                        <div class="step-number">6</div>
+                        <div class="step-timing">T+5s</div>
+                        <div class="step-title">🚀 提交任务</div>
+                        <div class="step-desc">
+                            提交到队列381531<br>
+                            创建submitted.txt<br>
+                            记录提交进度
+                        </div>
+                        <div class="loop-indicator">🔄</div>
+                    </div>
+                    
+                    <div class="timeline-step step-local" data-step="6" data-stage="5"
+                         data-tooltip="本地脚本执行完成，所有任务已提交，可以查看进度">
+                        <div class="step-number">7</div>
+                        <div class="step-timing">T+10s</div>
+                        <div class="step-title">✅ 本地完成</div>
+                        <div class="step-desc">
+                            脚本执行完成<br>
+                            所有任务已提交<br>
+                            可查看执行进度
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- NAS共享存储 -->
+                <div class="timeline-column nas-storage">
+                    <div class="column-header">
+                        🗄️ NAS共享存储
+                    </div>
+                    
+                    <div class="timeline-step step-nas" data-step="7" data-stage="0"
+                         data-tooltip="在NAS上创建批处理根目录，设置权限和目录结构">
+                        <div class="step-number">1</div>
+                        <div class="step-timing">T+0.3s</div>
+                        <div class="step-title">📁 创建批次目录</div>
+                        <div class="step-desc">
+                            /mnt/bn/ai4s-wl/bamboo/bamboo_simulation/<br>
+                            zengbs_test_md_0716/<br>
+                            设置目录权限
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-nas" data-step="8" data-stage="1"
+                         data-tooltip="为每个任务创建独立的工作目录，包含job_dirs和postprocess子目录">
+                        <div class="step-number">2</div>
+                        <div class="step-timing">T+1s</div>
+                        <div class="step-title">📂 创建任务目录</div>
+                        <div class="step-desc">
+                            创建job_dirs子目录<br>
+                            每个任务独立目录<br>
+                            j0r0-simulation-0, j0r1-simulation-1...
+                        </div>
+                        <div class="loop-indicator">🔄</div>
+                    </div>
+                    
+                    <div class="timeline-step step-nas" data-step="9" data-stage="1"
+                         data-tooltip="将config.json和post_config.json文件写入对应的任务目录">
+                        <div class="step-number">3</div>
+                        <div class="step-timing">T+1.5s</div>
+                        <div class="step-title">💾 写入配置文件</div>
+                        <div class="step-desc">
+                            保存config.json<br>
+                            保存post_config.json<br>
+                            OPLSAA力场参数
+                        </div>
+                        <div class="loop-indicator">🔄</div>
+                    </div>
+                    
+                    <div class="timeline-step step-nas" data-step="10" data-stage="3"
+                         data-tooltip="远程计算节点从NAS读取配置文件，获取模拟参数">
+                        <div class="step-number">4</div>
+                        <div class="step-timing">T+30s</div>
+                        <div class="step-title">📋 配置文件读取</div>
+                        <div class="step-desc">
+                            远程节点读取config.json<br>
+                            获取模拟参数<br>
+                            验证配置完整性
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-nas" data-step="11" data-stage="4"
+                         data-tooltip="接收来自远程计算的模拟结果，包括轨迹文件、日志等">
+                        <div class="step-number">5</div>
+                        <div class="step-timing">T+5min</div>
+                        <div class="step-title">📈 接收计算结果</div>
+                        <div class="step-desc">
+                            分子轨迹数据<br>
+                            模拟日志文件<br>
+                            中间计算结果
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-nas" data-step="12" data-stage="4"
+                         data-tooltip="接收后处理分析结果，包括物理化学性质计算结果">
+                        <div class="step-number">6</div>
+                        <div class="step-timing">T+10min</div>
+                        <div class="step-title">📊 接收分析结果</div>
+                        <div class="step-desc">
+                            物理化学性质数据<br>
+                            统计分析结果<br>
+                            异常检测报告
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-nas" data-step="13" data-stage="5"
+                         data-tooltip="所有任务完成，更新状态记录，数据集完整可用">
+                        <div class="step-number">7</div>
+                        <div class="step-timing">T+15min</div>
+                        <div class="step-title">✅ 数据集完整</div>
+                        <div class="step-desc">
+                            所有任务结果完整<br>
+                            更新状态记录<br>
+                            数据可供分析使用
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- AI4S Serverless集群 -->
+                <div class="timeline-column serverless-cluster">
+                    <div class="column-header">
+                        ☁️ AI4S Serverless集群
+                    </div>
+                    
+                    <div class="timeline-step step-remote" data-step="14" data-stage="2"
+                         data-tooltip="任务调度器从队列381531中取出任务，开始分配计算资源">
+                        <div class="step-number">1</div>
+                        <div class="step-timing">T+20s</div>
+                        <div class="step-title">🎯 任务调度</div>
+                        <div class="step-desc">
+                            从队列381531取出任务<br>
+                            评估资源需求<br>
+                            分配计算节点
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-remote" data-step="15" data-stage="3"
+                         data-tooltip="GPU计算节点开始执行分子动力学模拟">
+                        <div class="step-number">2</div>
+                        <div class="step-timing">T+1min</div>
+                        <div class="step-title">🖥️ GPU计算启动</div>
+                        <div class="step-desc">
+                            A10 GPU节点启动<br>
+                            加载OPLSAA力场<br>
+                            开始MD模拟
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-remote" data-step="16" data-stage="3"
+                         data-tooltip="执行分子动力学模拟计算，生成分子轨迹数据">
+                        <div class="step-number">3</div>
+                        <div class="step-timing">T+2min</div>
+                        <div class="step-title">🧪 MD模拟执行</div>
+                        <div class="step-desc">
+                            OPLSAA力场计算<br>
+                            生成分子轨迹<br>
+                            记录热力学数据
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-remote" data-step="17" data-stage="4"
+                         data-tooltip="模拟完成，将结果数据写回NAS存储">
+                        <div class="step-number">4</div>
+                        <div class="step-timing">T+4min</div>
+                        <div class="step-title">💾 结果写回</div>
+                        <div class="step-desc">
+                            写回轨迹数据<br>
+                            写回日志文件<br>
+                            更新任务状态
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-remote" data-step="18" data-stage="4"
+                         data-tooltip="CPU后处理节点启动，开始数据分析">
+                        <div class="step-number">5</div>
+                        <div class="step-timing">T+6min</div>
+                        <div class="step-title">🔧 后处理启动</div>
+                        <div class="step-desc">
+                            CPU节点启动<br>
+                            读取模拟数据<br>
+                            开始数据分析
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-remote" data-step="19" data-stage="4"
+                         data-tooltip="进行数据分析，计算物理化学性质，检测异常">
+                        <div class="step-number">6</div>
+                        <div class="step-timing">T+8min</div>
+                        <div class="step-title">📊 数据分析</div>
+                        <div class="step-desc">
+                            统计分析<br>
+                            物理化学性质计算<br>
+                            异常检测
+                        </div>
+                    </div>
+                    
+                    <div class="timeline-step step-remote" data-step="20" data-stage="5"
+                         data-tooltip="所有计算任务完成，释放计算资源">
+                        <div class="step-number">7</div>
+                        <div class="step-timing">T+12min</div>
+                        <div class="step-title">✅ 任务完成</div>
+                        <div class="step-desc">
+                            所有计算完成<br>
+                            释放计算资源<br>
+                            更新任务状态
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="tooltip" id="tooltip"></div>
+    
+    <script>
+        // 时序步骤定义
+        const progressStages = {
+            0: { name: '初始化阶段', desc: '启动脚本，解析参数，创建NAS目录' },
+            1: { name: '任务生成阶段', desc: '读取配置，生成任务，写入NAS' },
+            2: { name: '任务提交阶段', desc: '打包任务，提交到远程队列，开始调度' },
+            3: { name: '远程执行阶段', desc: 'GPU计算，MD模拟，从NAS读取配置' },
+            4: { name: '结果回收阶段', desc: '写回结果，后处理分析，数据回流' },
+            5: { name: '完成阶段', desc: '所有任务完成，数据集完整可用' }
+        };
+        
+        // 数据流向定义 (包含具体步骤连接)
+        const dataFlows = {
+            0: [
+                { from: 'local', to: 'nas', fromStep: 1, toStep: 7, label: '创建目录指令', color: '#28a745' }
+            ],
+            1: [
+                { from: 'local', to: 'nas', fromStep: 2, toStep: 8, label: '配置数据', color: '#28a745' },
+                { from: 'local', to: 'nas', fromStep: 3, toStep: 9, label: '任务配置', color: '#28a745' }
+            ],
+            2: [
+                { from: 'local', to: 'remote', fromStep: 4, toStep: 14, label: '任务指令', color: '#28a745' }
+            ],
+            3: [
+                { from: 'nas', to: 'remote', fromStep: 10, toStep: 15, label: '配置文件', color: '#28a745' }
+            ],
+            4: [
+                { from: 'remote', to: 'nas', fromStep: 17, toStep: 11, label: '计算结果', color: '#dc3545' },
+                { from: 'remote', to: 'nas', fromStep: 19, toStep: 12, label: '分析数据', color: '#dc3545' }
+            ],
+            5: [
+                { from: 'nas', to: 'local', fromStep: 13, toStep: 6, label: '状态反馈', color: '#dc3545' }
+            ]
+        };
+        
+        let currentStage = -1;
+        
+        // 获取所有交互元素
+        const timelineSteps = document.querySelectorAll('.timeline-step');
+        const tooltip = document.getElementById('tooltip');
+        const progressInfo = document.getElementById('progressInfo');
+        
+        // 添加悬停提示功能
+        timelineSteps.forEach(step => {
+            step.addEventListener('mouseenter', (e) => {
+                const tooltipText = step.getAttribute('data-tooltip');
+                if (tooltipText) {
+                    tooltip.innerHTML = tooltipText;
+                    tooltip.style.display = 'block';
+                }
+            });
+            
+            step.addEventListener('mousemove', (e) => {
+                tooltip.style.left = e.pageX + 15 + 'px';
+                tooltip.style.top = e.pageY - 10 + 'px';
+            });
+            
+            step.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+            });
+        });
+        
+        // 显示进度函数
+        function showProgress(stage) {
+            currentStage = stage;
+            
+            // 更新按钮状态
+            document.querySelectorAll('.progress-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            if (stage === -1) {
+                document.getElementById('btn-all').classList.add('active');
+            } else {
+                document.getElementById('btn-' + stage).classList.add('active');
+            }
+            
+            // 更新进度信息
+            if (stage === -1) {
+                progressInfo.innerHTML = '显示全部步骤和数据流向';
+            } else {
+                const stageInfo = progressStages[stage];
+                progressInfo.innerHTML = `<strong>当前阶段：${stageInfo.name}</strong><br>${stageInfo.desc}`;
+            }
+            
+            // 重置所有步骤
+            timelineSteps.forEach(step => {
+                step.classList.remove('active');
+                step.style.opacity = stage === -1 ? '1' : '0.3';
+            });
+            
+            // 激活当前阶段的步骤
+            if (stage !== -1) {
+                timelineSteps.forEach(step => {
+                    if (step.getAttribute('data-stage') == stage) {
+                        step.classList.add('active');
+                        step.style.opacity = '1';
+                    }
+                });
+            } else {
+                timelineSteps.forEach(step => {
+                    step.style.opacity = '1';
+                });
+            }
+            
+            // 显示数据流向
+            showDataFlows(stage);
+        }
+        
+        // 显示数据流向
+        function showDataFlows(stage) {
+            const flowConnections = document.getElementById('flowConnections');
+            flowConnections.innerHTML = '';
+            
+            if (stage === -1) {
+                // 显示所有数据流向
+                Object.values(dataFlows).forEach(flows => {
+                    flows.forEach(flow => drawFlow(flow));
+                });
+            } else if (dataFlows[stage]) {
+                // 显示特定阶段的数据流向
+                dataFlows[stage].forEach(flow => drawFlow(flow));
+            }
+        }
+        
+        // 绘制数据流向
+        function drawFlow(flow) {
+            const flowConnections = document.getElementById('flowConnections');
+            
+            // 找到对应的步骤元素
+            const fromStep = document.querySelector(`[data-step="${flow.fromStep}"]`);
+            const toStep = document.querySelector(`[data-step="${flow.toStep}"]`);
+            
+            if (!fromStep || !toStep) return;
+            
+            // 获取步骤的位置信息
+            const fromRect = fromStep.getBoundingClientRect();
+            const toRect = toStep.getBoundingClientRect();
+            const containerRect = document.querySelector('.timeline-layout').getBoundingClientRect();
+            
+            // 计算连接点
+            let fromX, fromY, toX, toY;
+            
+            if (flow.color === '#28a745') {
+                // 绿色箭头（向右）：从右边出发，到左边结束
+                fromX = fromRect.right - containerRect.left;
+                fromY = fromRect.top + fromRect.height / 2 - containerRect.top;
+                toX = toRect.left - containerRect.left;
+                toY = toRect.top + toRect.height / 2 - containerRect.top;
+            } else {
+                // 红色箭头（向左）：从左边出发，到右边结束
+                fromX = fromRect.left - containerRect.left;
+                fromY = fromRect.top + fromRect.height / 2 - containerRect.top;
+                toX = toRect.right - containerRect.left;
+                toY = toRect.top + toRect.height / 2 - containerRect.top;
+            }
+            
+            // 创建曲线路径
+            const midX = (fromX + toX) / 2;
+            const controlOffset = Math.abs(fromX - toX) * 0.3;
+            
+            // 创建箭头标记（动态颜色）
+            const markerId = 'arrowhead-' + (flow.color === '#dc3545' ? 'red' : 'green');
+            let marker = document.getElementById(markerId);
+            if (!marker) {
+                marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+                marker.setAttribute('id', markerId);
+                marker.setAttribute('markerWidth', '12');
+                marker.setAttribute('markerHeight', '8');
+                marker.setAttribute('refX', '11');
+                marker.setAttribute('refY', '4');
+                marker.setAttribute('orient', 'auto');
+                
+                const arrowPolygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                arrowPolygon.setAttribute('points', '0 0, 12 4, 0 8');
+                arrowPolygon.setAttribute('fill', flow.color);
+                
+                marker.appendChild(arrowPolygon);
+                document.querySelector('defs').appendChild(marker);
+            }
+            
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const pathData = `M ${fromX} ${fromY} Q ${midX} ${fromY - controlOffset} ${toX} ${toY}`;
+            path.setAttribute('d', pathData);
+            path.setAttribute('stroke', flow.color);
+            path.setAttribute('stroke-width', '3');
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke-dasharray', '8,4');
+            path.setAttribute('marker-end', `url(#${markerId})`);
+            
+            // 添加动画
+            const animate = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+            animate.setAttribute('attributeName', 'stroke-dashoffset');
+            animate.setAttribute('values', '0;-24');
+            animate.setAttribute('dur', '2s');
+            animate.setAttribute('repeatCount', 'indefinite');
+            path.appendChild(animate);
+            
+            // 创建标签背景
+            const labelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            const labelX = midX;
+            const labelY = fromY - controlOffset - 25;
+            const labelWidth = flow.label.length * 8 + 16;
+            const labelHeight = 20;
+            
+            labelBg.setAttribute('x', labelX - labelWidth / 2);
+            labelBg.setAttribute('y', labelY);
+            labelBg.setAttribute('width', labelWidth);
+            labelBg.setAttribute('height', labelHeight);
+            labelBg.setAttribute('fill', 'rgba(255, 255, 255, 0.95)');
+            labelBg.setAttribute('stroke', '#ccc');
+            labelBg.setAttribute('rx', 10);
+            labelBg.setAttribute('ry', 10);
+            
+            // 创建标签文本
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', labelX);
+            text.setAttribute('y', labelY + 14);
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('font-size', '12px');
+            text.setAttribute('font-weight', '600');
+            text.setAttribute('fill', '#333');
+            text.textContent = flow.label;
+            
+            // 添加到SVG
+            flowConnections.appendChild(path);
+            flowConnections.appendChild(labelBg);
+            flowConnections.appendChild(text);
+        }
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            showProgress(-1);
+        });
+    </script>
+</body>
+</html>
